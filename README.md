@@ -1,5 +1,5 @@
 # salariominimomx
-##Introducción
+## Introducción
 La cuestión del salario mínimo resuena como un tema de debate en el actual gobierno y en los periódicos
 nacionales, academias, asociaciones patronales y sindicales al ser considerado un instrumentos legítimo y
 relevante desde la política económica en busca de promover la igualdad y elevar el ingreso sobre todo para
