@@ -1,0 +1,700 @@
+---
+title: 'Proyecto final: Series de tiempo, Análisis y estimación de los efectos en el crecimiento de un aumento en el salario mínimo en México.'
+author: "Eric Oziel Hernandez Salinas, Eduardo Gaitán Escalante"
+date: "`r Sys.Date()`"
+output: pdf_document
+---
+
+```{r setup, include=FALSE, message=FALSE,warning=FALSE}
+knitr::opts_chunk$set(
+	echo = FALSE,
+	message = FALSE,
+	warning = FALSE
+)
+library(here)
+library(tidyverse)
+library(readxl)
+library(seasonal)
+library(shiny)
+library(zoo)
+library(lmtest)
+library(GGally)
+library(MASS)
+library(strucchange)
+library(sandwich)
+library(urca)
+library(vars)
+library(tseries)
+
+panel.hist <- function(x, ...)
+{
+    usr <- par("usr")
+    par(usr = c(usr[1:2], 0, 1.5) )
+    h <- hist(x, plot = FALSE)
+    breaks <- h$breaks; nB <- length(breaks)
+    y <- h$counts; y <- y/max(y)
+    rect(breaks[-nB], 0, breaks[-1], y, col = "orangered2", ...)
+    }
+
+here::i_am("estimación_salarios.Rmd")
+
+```
+
+# Introducción
+
+La cuestión del salario mínimo resuena como un tema de debate en el actual gobierno y en los periódicos nacionales, academias, asociaciones patronales y sindicales al ser considerado un instrumentos legítimo y relevante desde la política económica en busca de promover la igualdad y elevar el ingreso sobre todo para los trabajadores con menores ingresos y considerados en niveles de pobreza. Por ello, las discusiones se han centrado sobre sus efectos en términos de empleo, informalidad, crecimiento económico e inflación. 
+
+En ese sentido, es difícil predecir los efectos exactos de un aumento del salario mínimo en México, ya que el impacto dependería de una variedad de factores, como el tamaño del aumento, el estado actual de la economía nacional y global, los mercados laborales específicos en los que se implementaría el aumento. Sin embargo, en general, un aumento del salario mínimo podría tener efectos positivos, así como negativos en la economía y en los trabajadores.
+
+En primera instancia, un aumento del salario mínimo podría llevar a ingresos más altos para los trabajadores de bajos salarios, lo que podría ayudar a reducir la pobreza y la desigualdad de ingresos. También podría estimular la actividad económica al aumentar el poder adquisitivo de los trabajadores de bajos salarios, que probablemente gastarán sus ganancias adicionales en bienes y servicios, de manera que impulsa la demanda desenvolviendo en condiciones aptas para un mayor crecimiento económico.  
+
+Por otro lado, un aumento del salario mínimo podría llevar a mayores costos para las empresas, lo que podría resultar en ganancias reducidas, despidos o reducción de horas para los trabajadores. También podría llevar a precios más altos para los bienes y servicios, ya que las empresas traspasarían los mayores costos laborales a los consumidores. Debido a esto creemos que un aumento en el salario mínimo también tiene afectaciones en la inflación y el índice de precios al consumidor.
+
+Además, un aumento del salario mínimo podría potencialmente llevar a menores oportunidades de trabajo para los trabajadores de bajos salarios, ya que las empresas buscan automatizar o externalizar trabajos para reducir los costos laborales (off-shoring).
+
+Por tanto, es relevante tener en cuenta que los posibles efectos de un aumento del salario mínimo en México dependen de los detalles específicos de la política y las condiciones económicas en el momento de su implementación.
+
+En primer momento, leemos y depuramos los datos necesarios para realizar un proceso de desestacionalización y posteriormente diferenciar las series, en segundo momento realizaremos la prueba de causalidad de Granger, agregamos los datos en promedio trimestral y ajustamos un modelo VAR(p). En este proyecto tomamos en cuenta las variables indicadas en la literatura el Indice del Salario Mínimo Real (ISMR), el Indice de Tipo de Cambio Real (ITCR), el Producto Interno Bruto (PIB o Y), la cantidad de personas que ganan al menos un salario mínimo (L/Y) y el Indice nacional de precios al consumidor (INPC), a su vez construimos una variable de productividad como . De ellas trataremos de probar causalidad de Granger en cada variable contra el ISMR , para comprobar si existe causalidad de parte de estas variables
+
+# Breve revisión de la literatura
+
+La literatura sobre los efectos en el aumento del salario mínimo es amplia y vasta, abarca la mayoría de los puntos de vista desde efectos "positivos" y "negativos" en la economía, por ello, a continuación haremos recuento de las investigaciones más relevantes en la materia, por ejemplo, la investigación Card y Krueger (1993) que utiliza métodos de series de tiempo para estimar el efecto de un aumento en el salario mínimo a nivel regional en el empleo del mercado de salarios bajos, donde analizan una muestra de cadenas de comida rápida, entre la región de Nueva Jersey y Pennsylvania, encuentran que dicho aumento en esencia no tiene efectos significativos en el nivel de empleo de la región que se vio afectada con el aumento salarial.
+
+ Schmitt (2013) encuentra que los aumentos moderados a los salarios minimos tienen un efecto no muy grande en el empleo, "el shock de costos del salario mínimo es pequeño comparado en relacion con los costos generales de una firma y modesto comparado con los salarios pagados a los trabajadores en el sector de bajos salarios"; mientras, Lizardi (2009) realiza una aplicación de un modelo VAR con cointegración de series en países de centro américa para analizar las determinantes del salario mínimo, por lo que encuentra variables relevantes en el proceso como la productividad, el nivel de precios, la competitividad internacional y el margen de ganancia; de igual forma, Velásquez Pinto (2017) hace una extensa revisión de la literatura para América Latina, en donde encuentra información de relevancia para los mismos países en cada caso y para México, en este contexto la mayoría de las investigaciones orientadas en países en desarrollo en América Latina muestran que no existe un efecto relevante o de gran magnitud del salario mínimo en el empleo, ni en los precios (al menos para el caso mexicano, véase caso chileno y otros), así también remarca la importancia de considerar que la mayoría de estudios están centrados en la población considerada como "formal" y no la población considerada "informal" aún cuando en muchos de los países latinos una gran cantidad de personas laboran en este último sector, por lo que puede ocultar información relevante en la estimación, de manera que, esta vía no es tomada en cuenta en este documento; sin embargo, exhortamos a los lectores a intentar aumentar la literatura que busque evidencia de este efecto y amplíe la visión del sector informal.
+
+Por su parte, los análisis de Conasami (2019) han resaltado evidencia que incrementar el salario mínimo no tendría consecuencias importantes en el nivel general de precios de la economía mexicana, es decir, ante un incremento de 100% en el salario mínimo se tiene efectos acumulados en un año de 0.022% en el nivel de precios de todo el país, por lo que no muestra ningún efecto en las ciudades de la frontera norte; además, considerar que el salario mínimo es una política efectiva, solo si se implementan de forma correcta incrementos graduales, de forma que las empresas generen condiciones para ajustar su productividad a través de capacitación, y así alcanzar salarios reales sostenibles. 
+
+Según la OIT (2014b y 2014b, como es citado en Velazquez Pinto, 2017) si se considera la evolución del salario mínimo en términos reales respecto del año 2000, en México se ha observado sólo un 1,8% de aumento, sólo superior al 1,7% en Uruguay y al 1,2% en Paraguay; y claramente inferior al 26,6% que exhibe el promedio de países de la región. De esta manera, los antecedentes señalados sugieren que efectivamente el caso de México es particular, pues se trata de una economía con una alta proporción de empleo informal, que además se ha mantenido relativamente estancada en la última década, así como que el salario mínimo ha dejado de ser un instrumento activo de política salarial.
+
+Asimismo, siguiendo el análisis de la experiencia de México, se argumenta que la transferencia de los beneficios de la productividad laboral a los trabajadores está lejos de ser automática y mucho menos garantizada, dado que México cuenta con algunos de los más altos niveles de productividad laboral y competitividad en la región, sin embargo, su nivel del salario mínimo es lo más bajo. Si bien es importante no olvidar la relevancia de la productividad y de la competitividad en la discusión sobre el salario mínimo, es igual o más importante recordar que la transferencia de los beneficios a los trabajadores con  salario  mínimo  no  es  posible  sin  específicas  políticas  económicas  y  laborales  para hacerlo (Moreno-Brid, Garry, Gomez-Franco, 2014).
+
+```{r itc_inpc, message=FALSE, warning=FALSE, include=FALSE}
+dfbx = readr::read_csv("ITCR_BX.csv", col_types = c("?","n","n","n","n","n"))
+
+
+  
+dfbx = dfbx[61:271,] %>% dplyr::select(!"Fecha")
+
+itcr_m <- ts(dfbx, start = c(2005, 1), frequency = 12)
+itcr_m
+itcr_q<- aggregate(itcr_m, nfrequency = 4, FUN = "mean")
+itcr_q
+
+Seas_itcrq <- seas(itcr_q)
+
+itcr_Ad <- final(Seas_itcrq)
+as_tibble(itcr_Ad)
+```
+
+```{r sm, message=FALSE, warning=FALSE, include=FALSE}
+enoe = readxl::read_excel("SM_2005_2022.xlsx")
+enoe2 = readxl::read_excel("SM_2005_2022.xlsx",sheet = 2, col_types = c("guess","guess","numeric"))%>% dplyr::select("Hasta 1 SM")
+
+
+enoe = enoe %>% 
+  mutate(Date = with(enoe, paste0(Año, Mes)))
+enoe$Date = lubridate::ym(enoe$Date)
+
+
+enoe = enoe %>% 
+  dplyr::select("Hasta 1 SM"
+         #,"+1 hasta 2 SM",
+         #"+2 hasta 3"
+         )
+
+
+L_m <- ts(enoe, start = c(2005, 1), frequency = 12) 
+
+
+L_q<- aggregate(L_m, nfrequency = 4, FUN = "mean")
+L_q
+
+L_q2 <- ts(enoe2,start = c(2020,2),frequency = 4)
+
+## agregando los ultimos valores
+L_q <- ts(c(L_q, L_q2),               # Combined time series object
+          start = start(L_q),
+   frequency = frequency(L_q) )
+#final
+#
+prueba =decompose(zoo::na.aggregate(L_q)) ## Tratamiento de NA
+L_q <- prueba$x
+
+Seas_Lq<- seas(L_q)
+lq_Ad <- final(Seas_Lq)
+
+```
+
+```{r PIB, include=FALSE}
+dfinegi = read_csv("pib.csv", col_types = c("n","c","n","n")) %>% filter(Fecha >= 2005)
+
+dfinegi =dfinegi[1:71,]
+
+dfinegi = dfinegi %>% 
+  mutate(Date = with(dfinegi, paste0(Fecha, Trimestre)))
+
+
+#dfinegi$Date = 
+dfinegi$Date = lubridate::yq(dfinegi$Date)
+
+colnames(dfinegi) <- c("Fecha","Trimestre","PIB","impuestos","Date")
+
+pib = dfinegi %>% dplyr::select(PIB) %>% ts(start = c(2005,1),frequency = 4)
+
+pib
+
+pib2 = dfinegi %>% dplyr::select(PIB)
+Seas_pib<- seas(pib)
+pib_Ad <- final(Seas_pib)
+##producto por trabajador
+YL = pib2/as.data.frame(lq_Ad)
+#names(YL) = "Producto por trabajador"
+YL <- YL %>% ts(start = c(2005,1),frequency = 4, names = "Y/L")
+seasYL =seas(YL)
+YL_Ad<- final(seasYL) 
+
+```
+
+```{r conasami, include=FALSE}
+#install.packages("tsbox")
+library(tsbox)
+conasami = read_csv("conasami.csv")
+conasami = conasami %>% 
+  pivot_longer(!Fecha & !mean, names_to = "Mes", values_to = "ISMR")
+
+conasami = conasami %>% 
+  mutate(Date = with(conasami, paste0(Fecha, Mes)), ISMRmean = mean)
+
+conasami$Date = lubridate::ym(conasami$Date)
+
+conasami = conasami %>% dplyr::select(
+  #"Date",
+  "ISMR"#, "ISMRmean"
+  )
+
+conasami <- conasami[61:276,]
+
+sm_mensual <- ts(conasami, start = c(2005, 1), frequency = 12, end = c(2022,6))
+sm_mensual
+sm_qrt<- aggregate(sm_mensual, nfrequency = 4, FUN = "mean")
+sm_qrt
+
+Seas_smr<- seas(sm_qrt, outlier = NULL)
+sm_Ad <- final(Seas_smr)
+
+```
+
+Una vez homologadas las series de tiempo en cuatrimestres se procedió a aplicar una desestacionalización sobre las variables con el paquetes`seas::`, posteriormente conjuntamos las variables en un data.frame
+
+# Análisis de datos
+
+El *dataframe* compuesto es el siguiente donde se muestran los valores de 2005 a 2022 de las variables más importantes para el análisis del salario mínimo en México.
+
+```{r composite, echo=FALSE}
+#conformación de data.frame
+ITCR=ts(as_tibble(itcr_Ad)$ITCR,start = c(2005,1), end = c(2022,2), frequency = 4)
+INPC = ts(as_tibble(itcr_Ad)$INPC,start = c(2005,1), end = c(2022,2), frequency = 4)
+Datos_ms <- data.frame(cbind(INPC,ITCR, pib_Ad, sm_Ad, lq_Ad, YL_Ad))
+summary(Datos_ms)
+```
+
+Al obtener los siguientes estadísticos de las variables se procede a la generación de diferencias de las variables para suavizar el impacto, así como la comprobación de relación entre las variables mediante la prueba de causalidad de Granger
+
+## Diferencias logarítmicas
+
+Estas son las series en su diferencia logarítmica, como tenemos una diferencia perdemos un dato de cada serie.
+
+```{r Diff, echo=FALSE}
+
+DLitc <- ts(log(Datos_ms$ITCR) - lag(log(Datos_ms$ITCR), k = 1), 
+             start = c(2005, 1), 
+             freq = 4)
+DLinpc <- ts(log(Datos_ms$INPC)-lag(log(Datos_ms$INPC), k=1),
+             start = c(2005,1), freq = 4)
+
+DLpib <- ts(log(Datos_ms$pib_Ad) - lag(log(Datos_ms$pib_Ad), k = 1), 
+             start = c(2005, 1), 
+             freq = 4)
+
+DLYL <- ts(log(Datos_ms$YL_Ad) - lag(log(Datos_ms$YL_Ad), k = 1), 
+             start = c(2005, 1), 
+             freq = 4)
+
+DLismr<- ts(log(Datos_ms$sm_Ad) - lag(log(Datos_ms$sm_Ad), k = 1), 
+             start = c(2005, 1), 
+             freq = 4)
+
+DLlq<- ts(log(Datos_ms$lq_Ad) - lag(log(Datos_ms$lq_Ad), k = 1), 
+             start = c(2005, 1), 
+             freq = 4)
+
+df = data.frame(DLismr,
+           DLinpc,
+           DLitc,
+           DLlq,
+           DLpib
+           ,DLYL
+)
+summary(df)
+
+```
+
+\newpage
+
+## Pruebas Augmented Dicky-Fuller
+
+### Salario Mínimo
+
+```{r D.F., echo=FALSE}
+
+
+df<- df[2:70,]
+
+adf.test(na.approx(DLismr), k = 1)
+
+```
+
+### INPC
+
+```{r echo=FALSE}
+adf.test(na.approx(DLinpc), k = 1)
+
+```
+
+### ITCR
+
+```{r echo=FALSE}
+adf.test(na.approx(DLitc), k =1)
+
+```
+
+### Cantidad de Trabajadores
+
+```{r echo=FALSE}
+adf.test(na.approx(DLlq), k =1)
+
+```
+
+### PIB
+
+```{r echo=FALSE}
+adf.test(na.omit(DLpib), k = 1)
+```
+
+### Productividad
+
+```{r echo=FALSE}
+adf.test(na.approx(DLYL), k =1)
+```
+
+Desde las pruebas Dickey-Fuller de primer orden vemos que las diferencias de la serie son estacionarias de orden uno por lo que su orden de integración es uno para todas las series y no contienen raíces unitarias.
+
+# Gráficas de diferencia logarítmica
+
+```{r echo=FALSE}
+#Graficas
+
+par(mfrow=c(3, 2))
+plot(DLismr, xlab = "Tiempo", 
+     main = "Diferencias Logarítmicas del ISMR",
+     col = "darkgreen") # Dummy para primeros trimestres desde 2019
+
+
+plot(DLitc, xlab = "Tiempo", 
+     main = "Diferencias Logarítmicas del Tipo de cambio real",
+     col = "darkblue") # PANDEMIA 
+
+plot(DLpib, xlab = "Tiempo", 
+     main = "Diferencias Logarítmicas de los PIB",
+     col = "darkred") # Pandemia
+
+plot(DLlq, xlab = "Tiempo", 
+     main = "Diferencias Logarítmicas de la cantidad de personas que ganan hasta 1 salario minimo",
+     col = "magenta") # Pandemia y Outsourcing
+
+plot(DLinpc, xlab = "Tiempo", 
+     main = "Diferencias Logarítmicas del INPC",
+     col = "salmon") # primer cuatrimestre y ultimo cuatrimestre
+
+plot(DLYL, xlab = "Tiempo", 
+     main = "Diferencias Logarítmicas del producto por trabajador",
+     col = "orangered") #Pandemia y Outsourcing
+
+par(mfrow=c(1, 1))
+
+
+```
+
+### Variables Dummy para estacionariedad
+
+Crearemos unas variables que controlen el efecto estacionario de cada serie de tiempo, principalmente los picos y valles pronunciados, así como los efectos cíclicos del ciclo de negocios.
+
+Agregamos dummys para la crisis de 2008 y 2009, asi como para la reciente crisis de la pandemia. En la serie de la inflacion se ajusto cada primer y ultimo trimestre, mientras el indice del salario minimo real se coloco desde cada inicio de trimestre desde el año 2019, finalmente para las demás solo se ajusto por pandemia.
+
+```{r dummys1, include=FALSE}
+
+DLinpc #%>% as_tibble() ## 69 datos
+dummyinpc = rep(c(1,0,0,1), times = 18)
+dummyinpc = ts(dummyinpc, start = c(2005,1),  end = c(2022,2), frequency = 4)
+
+DLismr %>% as_tibble() ## 70 datos
+dummyismr = rep(0, times = 70)
+dummyismr[c(57,61,65,69)] = 1 # primer trimestres
+
+dummyismr = ts(dummyismr, start = c(2005,1),  end = c(2022,2), frequency = 4)
+
+DLitc %>% as_tibble() ## 69 datos # 12,13,16,17 2020 trim 2
+
+dummyitc = rep(0, times = 70)
+dummyitc[c(12,13,16,17,62)] = 1 # 12,13,16,17,62
+
+dummyitc = ts(dummyitc, start = c(2005,1),  end = c(2022,2), frequency = 4)
+
+DLlq %>% as_tibble() ## 70 datos # 57,62,63,69
+dummyLQ = rep(0, times = 70)
+dummyLQ[c(57,62,63,69)] = 1 # 57,62,63,69
+
+dummyLQ = ts(dummyLQ, start = c(2005,1),  end = c(2022,2), frequency = 4)
+
+DLpib %>% as_tibble() ## 70 datos
+dummypib = rep(0, times = 70)
+dummypib[c(16,17,18,19,62,63)] = 1 # c(16,17,18,19)# 2008 # 2020 62,63
+
+dummypib = ts(dummypib, start = c(2005,1),  end = c(2022,2), frequency = 4)
+
+
+DLYL %>% as_tibble() ## 70 datos #57,62,63,69
+
+
+dummyYL = rep(0, times = 70)
+dummyYL[c(17,18,57,62,63,69)] = 1 # c(17,18)# 2008 # 2020 62,63,69
+
+dummyYL = ts(dummyYL, start = c(2005,1),  end = c(2022,2), frequency = 4)
+
+dumm_VAR = cbind(dummyinpc,
+                 dummyismr,
+                 #dummyitc,
+                 #dummyLQ,
+                 dummypib 
+                 #,dummyYL
+                 )
+dumm_VAR
+```
+
+# Pruebas de causalidad de Granger
+
+En primer momento, la metodología usada comenzó mediante el análisis de Clive Granger en 1969, denominada Causalidad de Granger, la cual permite de forma general determinar si una serie de tiempo es útil en el pronóstico de otra variable por medio de una prueba de hipótesis, es decir, condiciones en que la variable X cause la variable Y, ambas o de forma inversa se causen, de manera que este argumento toma fuerza en economía al observarse en medida la capacidad de predecir valores futuros de una serie de tiempo desde los valores previos, pues a su vez las variables económicas conllevan relación entre sí, por ello, es relevante conocimiento previo de las relaciones entre las variables que se justifican desde la teoría económica. Posteriormente, al observar que existe causalidad entre las variables, procedemos a la formulación de un modelo del tipo vector autorregresivo (VAR), que pretende caracterizar las interacciones simultáneas entre un grupo de variables, de esta forma, el VAR se forma por un sistema de ecuaciones de forma reducida sin restringir; así es de utilidad con la existencia de simultaneidad entre grupos de variables, generando relaciones a largo plazo en un determinado número de periodos.
+
+Procederemos a realizar las pruebas de causalidad de Granger entre todas las variables para poder determinar si su relación es endogena o si es unidireccional la causalidad.
+
+```{r granger test, echo=FALSE}
+## Prueba de Causalidad de Granger 
+
+
+#Prueba de causalidad para 4, 8, 12 y 16 rezagos:
+order = 8
+# pruebas con la variable de respuesta
+as_data_frame(grangertest(DLismr ~ DLitc, order = order, data = Datos_ms))%>%dplyr::select(`Pr(>F)`) %>% knitr::kable(col.names = "Estadistico de prueba (p(>F))",caption = "DLismr ~ DLitc") 
+
+as_data_frame(grangertest(DLitc ~ DLismr, order = order, data = Datos_ms))%>%dplyr::select(`Pr(>F)`) %>% knitr::kable(col.names = "Estadistico de prueba (p(>F))",caption = "DLitc ~ DLismr")
+as_data_frame(grangertest(DLismr ~ DLpib, order = order, data = Datos_ms))%>%dplyr::select(`Pr(>F)`) %>% knitr::kable(col.names = "Estadistico de prueba (p(>F))",caption = "DLismr ~ DLpib")
+as_data_frame(grangertest(DLpib ~ DLismr, order = order, data = Datos_ms))%>%dplyr::select(`Pr(>F)`) %>% knitr::kable(col.names = "Estadistico de prueba (p(>F))",caption = "DLpib ~ DLismr")
+as_data_frame(grangertest(DLismr ~ DLlq, order = order, data = Datos_ms))%>%dplyr::select(`Pr(>F)`) %>% knitr::kable(col.names = "Estadistico de prueba (p(>F))",caption = "DLismr ~ DLlq")
+as_data_frame(grangertest(DLlq ~ DLismr, order = order, data = Datos_ms))%>%dplyr::select(`Pr(>F)`) %>% knitr::kable(col.names = "Estadistico de prueba (p(>F))",caption = "DLlq ~ DLismr")
+as_data_frame(grangertest(DLismr ~ DLinpc, order = order, data = Datos_ms))%>%dplyr::select(`Pr(>F)`) %>% knitr::kable(col.names = "Estadistico de prueba (p(>F))",caption = "DLismr ~ DLinpc")
+as_data_frame(grangertest(DLinpc ~ DLismr, order = order, data = Datos_ms))%>%dplyr::select(`Pr(>F)`) %>% knitr::kable(col.names = "Estadistico de prueba (p(>F))",caption = "DLinpc ~ DLismr")
+as_data_frame(grangertest(DLismr~DLYL , order = order, data = Datos_ms))%>%dplyr::select(`Pr(>F)`) %>% knitr::kable(col.names = "Estadistico de prueba (p(>F))",caption = "DLismr~DLYL")
+as_data_frame(grangertest(DLYL ~ DLismr, order = order, data = Datos_ms))%>%dplyr::select(`Pr(>F)`) %>% knitr::kable(col.names = "Estadistico de prueba (p(>F))",caption = "DLYL ~ DLismr")
+#causalidad de las dependientes
+#Pib
+as_data_frame(grangertest(DLpib ~ DLitc, order = order, data = Datos_ms))%>%dplyr::select(`Pr(>F)`) %>% knitr::kable(col.names = "Estadistico de prueba (p(>F))",caption = "DLpib ~ DLitc")
+as_data_frame(grangertest(DLitc ~ DLpib, order = order, data = Datos_ms))%>%dplyr::select(`Pr(>F)`) %>% knitr::kable(col.names = "Estadistico de prueba (p(>F))",caption = "DLitc ~ DLpib")
+
+as_data_frame(grangertest(DLpib ~ DLlq, order = order, data = Datos_ms))%>%dplyr::select(`Pr(>F)`) %>% knitr::kable(col.names = "Estadistico de prueba (p(>F))",caption = "DLpib ~ DLlq")
+as_data_frame(grangertest(DLlq ~ DLpib, order = order, data = Datos_ms))%>%dplyr::select(`Pr(>F)`) %>% knitr::kable(col.names = "Estadistico de prueba (p(>F))",caption = "DLlq ~ DLpib")
+
+as_data_frame(grangertest(DLinpc ~ DLpib, order = order, data = Datos_ms))%>%dplyr::select(`Pr(>F)`) %>% knitr::kable(col.names = "Estadistico de prueba (p(>F))",caption = "DLinpc ~ DLpib")
+as_data_frame(grangertest(DLpib ~ DLinpc, order = order, data = Datos_ms))%>%dplyr::select(`Pr(>F)`) %>% knitr::kable(col.names = "Estadistico de prueba (p(>F))",caption = "DLpib ~ DLinpc")
+
+as_data_frame(grangertest(DLYL ~ DLpib, order = order, data = Datos_ms))%>%dplyr::select(`Pr(>F)`) %>% knitr::kable(col.names = "Estadistico de prueba (p(>F))",caption = "DLYL ~ DLpib")
+as_data_frame(grangertest(DLpib ~ DLYL, order = order, data = Datos_ms))%>%dplyr::select(`Pr(>F)`) %>% knitr::kable(col.names = "Estadistico de prueba (p(>F))",caption = "DLpib ~ DLYL")
+
+#itc
+
+as_data_frame(grangertest(DLitc~DLlq, order = order, data = Datos_ms))%>%dplyr::select(`Pr(>F)`) %>% knitr::kable(col.names = "Estadistico de prueba (p(>F))",caption = "DLitc~DLlq")
+as_data_frame(grangertest(DLlq ~ DLitc, order = order, data = Datos_ms))%>%dplyr::select(`Pr(>F)`) %>% knitr::kable(col.names = "Estadistico de prueba (p(>F))",caption = "DLlq ~ DLitc")
+
+as_data_frame(grangertest(DLinpc ~ DLitc, order = order, data = Datos_ms))%>%dplyr::select(`Pr(>F)`) %>% knitr::kable(col.names = "Estadistico de prueba (p(>F))",caption = "DLinpc ~ DLitc")
+
+as_data_frame(grangertest(DLYL ~ DLitc, order = order, data = Datos_ms))%>%dplyr::select(`Pr(>F)`) %>% knitr::kable(col.names = "Estadistico de prueba (p(>F))",caption = "DLYL ~ DLitc")
+as_data_frame(grangertest(DLitc ~ DLYL, order = order, data = Datos_ms))%>%dplyr::select(`Pr(>F)`) %>% knitr::kable(col.names = "Estadistico de prueba (p(>F))",caption = "DLitc ~ DLYL")
+
+#inpc
+as_data_frame(grangertest(DLinpc ~ DLYL, order = order, data = Datos_ms))%>%dplyr::select(`Pr(>F)`) %>% knitr::kable(col.names = "Estadistico de prueba (p(>F))",caption = "DLinpc ~ DLYL")
+as_data_frame(grangertest(DLYL ~ DLinpc, order = order, data = Datos_ms))%>%dplyr::select(`Pr(>F)`) %>% knitr::kable(col.names = "Estadistico de prueba (p(>F))",caption = "DLYL ~ DLinpc")
+
+as_data_frame(grangertest(DLlq ~ DLinpc, order = order, data = Datos_ms))%>%dplyr::select(`Pr(>F)`) %>% knitr::kable(col.names = "Estadistico de prueba (p(>F))",caption = "DLlq ~ DLinpc")
+as_data_frame(grangertest(DLinpc ~ DLlq, order = order, data = Datos_ms))%>%dplyr::select(`Pr(>F)`) %>% knitr::kable(col.names = "Estadistico de prueba (p(>F))",caption = "DLinpc ~ DLlq")
+#LQ y productividad
+as_data_frame(grangertest(DLYL ~ DLlq , order = order, data = Datos_ms))%>%dplyr::select(`Pr(>F)`) %>% knitr::kable(col.names = "Estadistico de prueba (p(>F))",caption = "DLYL ~ DLlq")
+as_data_frame(grangertest(DLlq ~ DLYL , order = order, data = Datos_ms))%>%dplyr::select(`Pr(>F)`) %>% knitr::kable(col.names = "Estadistico de prueba (p(>F))",caption = "DLlq ~ DLYL")
+
+
+```
+
+Vemos que mientras las variables que en la literatura se denominan como determinantes del salario mínimo, no causan mucho a la variable del salario, sin embargo la variable de salario si explica muy bien cada una de estas otras y tiene una causalidad evidente en todas.
+
+Debido a estas pruebas continuamos con el ajuste de un modelo VAR(p)
+
+# Modelos
+
+El modelo VAR(9) que proponemos es de la siguiente forma matemática:
+
+$$
+\textbf{X}_t =\gamma + \delta + A_1\textbf{X}_{t-1} + {A_2\textbf{X}_{t-2}} + ... +
++ A_9\textbf{X}_{t-9} + \textbf{U}_t
+$$
+
+donde $\gamma$ es la constante, $\delta$ simboliza la tendencia, posteriormente le siguen los valores de la variable $\textbf{X}_t$ hasta 9 rezagos multiplicados por los elementos $i,j$ de la matriz A y finalmente esta el término de error representado en $\textbf{U}_t$
+
+El óptimo según la función `VARselect()` es el orden 9 para un modelo de forma reducida ISMR\~INPC +PIB, donde podemos ver un buen ajuste de los datos y valores significativos en los rezagos. Por tanto observamos que existe un mejor modelo de tipo PIB\~INPC + ISMR que es mucho mejor pues tienen más significancia las variables y mayor ajuste los datos .
+
+### 
+
+```{r VAR_data}
+
+#df compuesto
+
+VAR_data = data.frame(DLismr,
+                      DLinpc,
+                      #DLitc,
+                      #DLlq,
+                      DLpib
+                      #,DLYL
+                      )
+
+VAR_data = na.spline(VAR_data)#  añadimos datos para los NA para poder tener más datos a traves de una interpolacion por 'spline'
+VAR_data = ts(VAR_data, start = c(2005,1), end = c(2022,2),freq = 4)
+
+#p1 =ts.plot(cbind(ts(Datos_ms#[2:71,5:7]
+        #          , start = c(2005,1), end = c(2022,2), frequency = 4), VAR_data), 
+     #plot.type = "l", 
+     #nc = 2,
+    # col = "orange",
+    # main = "Comparacion de Series en Diferencias", 
+     #xlab = "Tiempo"
+     
+    # )
+
+
+```
+
+```{r varconst, include=FALSE, warning=FALSE,message=FALSE}
+
+p =9
+#VAR selection
+selectvar = VARselect(VAR_data, lag.max = 10, type = 'const')#!
+
+#selectvar$selection %>% knitr::kable()
+  
+sum_var_const_ismr =VAR(VAR_data, p = p, type = "const"
+                        , exogen = dumm_VAR) %>% summary(equation = "DLismr")
+#sum_var_const_ismr
+
+sum_var_const_pib = VAR(VAR_data, p = p, type = "const", exogen = dumm_VAR) %>% summary(equation = "DLpib")
+#sum_var_const_pib
+
+# 8 rezagos comienza a ser significativa el inpc
+# es decir a 2 años
+#El optimo segun la funcion varselect es 9 para ISMR~INPC +PIB
+```
+
+```{r vartrend, include=FALSE}
+#VAR selection
+type = "trend"
+p = 9 #Orden 9 es el optimo con mejores modelos para trend
+
+selectvar = VARselect(VAR_data, lag.max = 10, type =type)#!
+
+selectvar$selection %>% knitr::kable()
+  
+sum_var_trend_ismr =VAR(VAR_data, p = p, type = type, exogen = dumm_VAR) %>% summary(equation = "DLismr")
+
+
+#sum_var_trend_ismr
+
+sum_var_trend_pib =VAR(VAR_data, p = p, type = type) %>% summary(equation = "DLpib")
+#sum_var_trend_pib
+```
+
+## VAR con tendencia y constante
+
+```{r both}
+type = "both"
+selectvar = VARselect(VAR_data, lag.max = 10, type =type)#!
+
+selectvar$selection %>% knitr::kable(col.names = "Numero de Rezagos")
+  #VAR selection
+
+p = 9 # Orden 9 es el optimo con mejores modelos para both
+sum_var_both_ismr =VAR(VAR_data, p =9 , type = type, exogen = dumm_VAR) %>% summary(equation = "DLismr")
+#sum_var_both_ismr
+
+#Modelo final
+var_final = VAR(VAR_data, p = p, type = type,
+                exogen = dumm_VAR)
+
+sum_var_both_pib = var_final %>% summary(equation = "DLpib")
+sum_var_both_pib
+#predict(var_final,)
+
+```
+
+```{r nonepib, include=FALSE}
+#VAR selection7
+type = "none"
+p = 9 # Orden 9 es el optimo con mejores modelos para none
+
+
+selectvar = VARselect(VAR_data, lag.max = 12, type =type)#!
+
+selectvar$selection %>% knitr::kable()
+  
+sum_var_none_ismr =VAR(VAR_data, p = p, type = type, exogen = dumm_VAR) %>% summary(equation = "DLismr")
+
+
+#sum_var_none_ismr
+
+sum_var_none_pib =VAR(VAR_data, p = p, type = type, exogen = dumm_VAR) %>% summary(equation = "DLpib")
+#sum_var_none_pib
+```
+
+Al variar el parámetro `type` encontramos que el mejor modelo es aquel que tiene constante y tendencia y es el que se presenta en este reporte. Podemos observar en el resumen que existen aun raíces unitarias en el proceso.
+
+Ahora, al analizar las variables del modelo VAR mediante pruebas estadísticas de autocorrelación de grado, de normalidad y homocedasticidad determinamos que existen condiciones para reformular el proceso, pues en ellas existen aún autocorrelación, así como residuales que se comportan como una distribución no normal y raíces unitarias que hacen que el sistema no tenga una solución a largo plazo, por ello, pasamos a reflexionar el planteamiento desde el método de cointegración. Ante esto, podemos definir la cointegración como dos o más series de tiempo que no son estacionarias y son de orden de integración igual, en este caso de orden **1**, son procesos en que existe una combinación lineal entre series; es decir, la existencia de una relación común estable en el largo plazo de dos o más variables, de esta forma, al analizar que las series están cointegradas, se puede identificar su proceso a largo plazo y el nivel de grado mediante la metodología implementada por S. Johansen. A continuación realizamos las siguientes pruebas estadísticas para diagnosticar ale VAR:
+
+### Pruebas VAR
+
+#### Pruebas de raíces unitarias
+
+Aqui se realizaron las pruebas de estacionariedad de Dickey-Fuller aumentada, Phillips-Perron y Zivot y Andrews
+
+Al realizar las pruebas de raíces unitarias Dicky-Fuller aumentada y Zivot y Andrews nos arrojaron resultados que nos ayudaron a determinar que el modelo contiene raíces unitarias, al rechazar la hipótesis nula, de manera que, no existe estacionariedad en el modelo VAR y nos encontraríamos con sesgos o errores de especificación, siendo así planteamos un proceso de cointegración que muestre la relación a largo plazo entre las variables
+
+```{r pruebasnorm}
+
+#Prueba Dickey-Fuller 
+summary(ur.df(na.approx(DLismr),type = "trend",lags = 4))
+summary(ur.df(na.approx(DLinpc), type = "trend",lags = 4))
+summary(ur.df(na.approx(DLpib), type = "trend",lags = 4))
+#Prueba Phillips Perron
+# summary(ur.pp(DLismr, type = "Z-tau", model = "trend", use.lag = 4)) 
+# summary(ur.pp(DLinpc,type = "Z-tau", model = "trend", use.lag = 4))
+# summary(ur.pp(DLpib,type = "Z-tau", model = "trend", use.lag = 4))
+#Prueba de cambio estructural
+summary(ur.za(DLismr, model="both", lag = 4))
+summary(ur.za(DLinpc, model="both", lag = 4)) # no pasa la prueba de raices unitarias
+summary(ur.za(DLpib,model="both", lag = 4))
+
+```
+
+#### Prueba Autocorrelación
+
+```{r pruebasac}
+#Prueba
+serial.test(var_final,type = "BG", lags.bg = 4)
+```
+
+#### Prueba Arch para VAR()
+
+```{r pruebaheteroc}
+#Prueba Arch
+arch.test(var_final)
+
+```
+
+Posteriormente, al analizar las pruebas de raíces unitarias realizamos las pruebas de autocorrelación y homocedasticidad en el modelo para conocer más a fondo las condiciones en las que nos encontramos, por tanto, este debido proceso nos reflejó que existe un grado de autocorrelación en el modelo, así como heterocedasticidad, pues en ambos casos ningún valor de p-value sobrepasa el valor crítico de 0.05, de manera que, ante estás condiciones y la existencia de raíces unitarias la formulación del modelo VAR es inadecuado, por lo que debemos configurar nuestro proceso y continuar con las variables mediante el método de cointegración que a continuación trataremos.
+
+### Predicción VAR e Impulso Respuesta
+
+Predicción del modelo final con variables *dummy* como exógenas y se muestran en estos gráficos el análisis de un impulso en la variable del salario mínimo real en México
+
+```{r var_final, echo=FALSE, message=FALSE, warning=FALSE}
+
+#var_final
+  
+dummyinpc2 = ts(c(0,1,1,0),start = c(2022,2),end = c(2024,2), frequency = 4)
+dummyismr2 = ts(c(0,0,1,0), start = c(2022,2), end = c(2024,2), frequency = 4)
+dummypib2 = ts(rep(0,times = 4), start = c(2022,2), end = c(2024,2),frequency = 4)
+
+dumm_VAR2= cbind(dummyinpc2,dummyismr2,dummypib2)
+colnames(dumm_VAR2) <- c("dummyinpc", "dummyismr","dummypib")
+predict(var_final,n.ahead = 9,dumvar = dumm_VAR2) %>% fanchart(mar =c(2,2.7,2,1.3),nc = 3, colors = c("olivedrab","olivedrab3","olivedrab4"), plot.type = "multiple", 
+                                                               cis = c(0.05,0.05)
+                                                               )
+irf(var_final,impulse = "DLismr", ortho = T, boot = T, n.ahead = 10, cumulative = T) %>% plot(plot.type ="m", nc = 2)                                              
+```
+
+## Pruebas de cointegración
+
+```{r cointegracion, echo=FALSE, message=FALSE, warning=FALSE}
+summary(ca.jo(VAR_data, type = "trace", ecdet = "trend", K = 9, spec = "longrun"))
+#summary(ca.jo(VAR_data, type = "trace", ecdet = "const", K = 9, spec = "longrun"))
+#summary(ca.jo(VAR_data, type = "trace", ecdet = "none", K = 9, spec = "longrun"))
+```
+
+```{r ca.jo, echo=FALSE}
+summary(ca.jo(VAR_data, type = "eigen", ecdet = "trend", K = 9, spec = "longrun"))
+#summary(ca.jo(VAR_data, type = "eigen", ecdet = "const", K = 9, spec = "longrun"))
+#summary(ca.jo(VAR_data, type = "eigen", ecdet = "none", K = 9, spec = "longrun"))
+```
+
+La prueba de la traza y la prueba del máximo eigen valor con tendencia nos reflejan que existe al menos un vector de cointegración, esto derivado a que los estadísticos de prueba son significativos. De manera que la ecuación de cointegración representa la combinación lineal de la relación de largo plazo de las series en orden 1.
+
+# Resultados
+
+Vemos que el VAR(9) que ajustamos con procedimiento de cointegración tiene al menos un vector de cointegración que se describe en la siguiente $\beta$
+
+$$
+\beta = [1,16.73624,7.380855,0.000089]
+$$
+
+Como podemos observar la relación a largo plazo representada por la combinación lineal de las series se puede ver a través de los residuales de cointegración, estos se comportan de manera **estacionaria**.
+
+```{r construyendoU}
+TT = ts(c(1:70), start = c(2005,1), end = c(2022,2), frequency = 4)
+U= VAR_data[,1]-1.673624e+01*VAR_data[,2]-VAR_data[,3]*7.380855e+00-TT*8.926132e-05
+
+LISMR = 
+plot(U, 
+     main = "Residuales de la Ecuación de Cointegración",
+     type = "l", 
+     col = "darkblue")
+
+p= predict(ar(U,aic = T), n.ahead = 4,prediction.interval = T)
+p$pred %>% plot(col = "salmon", main = "Prediccion del vector de cointegración en un proceso AR(p)" )
+```
+
+En una predicción de este vector para un proceso AR(p) el orden elegido por default a través del criterio de Akaike (`aic = TRUE`), podemos ver que la relación a largo plazo va a caer en una predicción para los siguientes cuatro trimestres.
+
+Finalmente podemos determinar que, el salario mínimo en México en realidad no tiene un efecto de causalidad desde la variable del PIB y del INPC, sin embargo de forma inversa si se causan, esto quiere decir que aunque el salario no es determinado por el producto ni por el nivel de precios estos si son causados por el salario. Los efectos negativos del incremento en el salario solo se presentan en el PIB, más no en la inflación.
+
+Derivado del proceso de VAR con cointegración vemos que tienen una relación a largo plazo estable entre ellas por lo que se espera que se comporten de manera similar y basado en el análisis de impulso respuesta podemos ver que el indice de salario mínimo disminuiría poco a poco siendo erosionado por la inflación, el Producto Interno Bruto experimentaría una caída siendo el mínimo en cinco trimestres adelante, y una posterior recuperación para el trimestre nueve pero con un patrón cíclico, finalmente la inflación parece tener una respuesta negativa y recupera sus valores alrededor del noveno trimestre de predicción para comenzar a elevarse en décimo periodo.
+
+# Bibliografía
+
+Campos Vázquez, R. M., Esquivel, G., & Santillán Hernández, A. S. (2017). El impacto del salario mínimo en los ingresos y el empleo en México. Revista de la CEPAL, 2017(122), 205--234. <https://doi.org/10.18356/413e4aea-es>
+
+CONASAMI. (2019). Posibles efectos del salario mínimo en la inflación en México. México. [https://www.gob.mx/conasami/documentos/posibles-efectos-del-salario-minimo-en-la-inflacion-en-mexico#:\~:text=Estudio%20elaborado%20por%20la%20Dirección,México%20no%20afectan%20la%20inflación](https://www.gob.mx/conasami/documentos/posibles-efectos-del-salario-minimo-en-la-inflacion-en-mexico#:~:text=Estudio%20elaborado%20por%20la%20Direcci%C3%B3n,M%C3%A9xico%20no%20afectan%20la%20inflaci%C3%B3n).
+
+Card, D. (1993). Minimum Wages And Employment: A Case Study Of The Fast Food Industry In New Jersey And Pennsylvania, NBER, Working Paper,  No. 3710. Recuperado de: <https://www.nber.org/system/files/working_papers/w4509/w4509.pdf>
+
+Guerrero de Lizardi, C. (2010). Determinantes Económicos del Salario Mínimo En Países Pequeños y Abiertos: Una Aplicación Para Centroamérica. CEPAL. Recuperado de: <https://repositorio.cepal.org/bitstream/handle/11362/4897/1/S2009380_es.pdf>
+
+Moreno-Brid, J. C., Garry, S., & Monroy-Gómez-Franco, L. A. (2014). El Salario Mínimo en México. Economía UNAM, 11(33), 78--93. \<[https://doi.org/10.1016/s1665-952x(14)72182-6](https://doi.org/10.1016/s1665-952x(14)72182-6)\>
+
+Schmitt, J. (2013), Why Does the Minimum Wage Have No Discernible Effect on Employment?, Center for Economic and Policy Research. Washington, D.C Recuperado de: <https://cepr.net/documents/publications/min-wage-2013-02.pdf>
+
+Velásquez M.D. (2017), Salario mínimo y empleo: evidencia empírica y relevancia para América Latina, Ginebra: OIT. Recuperado de <https://www.ilo.org/wcmsp5/groups/public/---ed_protect/---protrav/---travail/documents/publication/wcms_600492.pdf>
+
+\
