@@ -35,5 +35,5 @@ variable de productividad como . De ellas trataremos de probar causalidad de Gra
 contra el ISMR , para comprobar si existe causalidad de parte de estas variables
 
 contacto : 
-eduardo.gaitan.escalante@gmail.com
+eduardo.gaitan.escalante@gmail.com \\
 oziel.salinas89@gmail.com
